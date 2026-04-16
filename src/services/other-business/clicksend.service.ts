@@ -1,7 +1,24 @@
-import * as api from 'clicksend/api';
+let clicksendApiCache: any | null | undefined;
+
+function getClicksendApi() {
+  if (clicksendApiCache !== undefined) {
+    return clicksendApiCache;
+  }
+  try {
+    // Lazy-load so app startup does not crash when clicksend package is broken/missing.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    clicksendApiCache = require('clicksend/api');
+  } catch (error) {
+    console.error(`[Clicksend] SDK load failed: ${error?.message || error}`);
+    clicksendApiCache = null;
+  }
+  return clicksendApiCache;
+}
 
 export async function getSpecificContact(listId, contactId) {
   try {
+    const api = getClicksendApi();
+    if (!api) return null;
     var contactApi = new api.ContactApi(process.env.CLICKSEND_USER ?? '', process.env.CLICKSEND_API_KEY ?? '');
     const response = await contactApi.listsContactsByListIdAndContactIdGet(listId, contactId);
 
@@ -13,6 +30,8 @@ export async function getSpecificContact(listId, contactId) {
 
 export async function sendSMS(to, body) {
   try {
+    const api = getClicksendApi();
+    if (!api) return false;
     var smsApi = new api.SMSApi(process.env.CLICKSEND_USER ?? '', process.env.CLICKSEND_API_KEY ?? '');
 
     var smsMessage = new api.SmsMessage();
@@ -34,6 +53,8 @@ export async function sendSMS(to, body) {
 
 export async function sendMMS(to, body, mediaUrl) {
   try {
+    const api = getClicksendApi();
+    if (!api) return false;
     const mmsApi = new api.MMSApi(process.env.CLICKSEND_USER ?? '', process.env.CLICKSEND_API_KEY ?? '');
 
     let mmsMessage = new api.MmsMessage();
@@ -67,6 +88,8 @@ export async function sendMMS(to, body, mediaUrl) {
 // convert: fax, mms, post, postcard, csv
 export async function uploadMediaFile(base64Content: string, convert = 'mms') {
   try {
+    const api = getClicksendApi();
+    if (!api) return null;
     var uploadApi = new api.UploadApi(process.env.CLICKSEND_USER ?? '', process.env.CLICKSEND_API_KEY ?? '');
 
     var uploadFile = new api.UploadFile();
