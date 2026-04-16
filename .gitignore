@@ -1,0 +1,8 @@
+node_modules
+logs/
+.idea/
+dist/
+.env
+gapikey.json
+server-test.log
+pnpm-lock.yaml
