@@ -11,6 +11,79 @@ const SLACK_WEBHOOK_DUPLICATE_SUBJECT = process.env.SLACK_WEBHOOK_DUPLICATE_SUBJ
 const SLACK_WEBHOOK_MISSED_MINUTES = process.env.SLACK_WEBHOOK_MISSED_MINUTES || '';
 const SLACK_WEBHOOK_BEHAVIOR_ALERT = process.env.SLACK_WEBHOOK_BEHAVIOR_ALERT || '';
 const SLACK_WEBHOOK_FEEDBACK_NOTIF = process.env.SLACK_WEBHOOK_FEEDBACK_NOTIF || '';
+const TOKEN_STABILIZE_ATTEMPTS = Number(process.env.TOKEN_STABILIZE_ATTEMPTS || 3);
+const TOKEN_STABILIZE_DELAY_MS = Number(process.env.TOKEN_STABILIZE_DELAY_MS || 1200);
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseNumberSafe(value: any): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === 'string') {
+    const cleaned = value.split(',').join('').trim();
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  if (value && typeof value === 'object') {
+    if (typeof value.text === 'string') {
+      return parseNumberSafe(value.text);
+    }
+
+    if (typeof value.value === 'string' || typeof value.value === 'number') {
+      return parseNumberSafe(value.value);
+    }
+  }
+
+  return 0;
+}
+
+function extractSafeTokenValues(record: any) {
+  const tokensEarned = Math.max(0, parseNumberSafe(record?.field_245 ?? record?.field_245_raw));
+  const tokensSpent = Math.max(0, parseNumberSafe(record?.field_242 ?? record?.field_242_raw));
+  const rawTokenTotal = parseNumberSafe(record?.field_1016 ?? record?.field_1016_raw);
+  const derivedTokenTotal = tokensEarned - tokensSpent;
+  const tokenTotal = Math.max(0, rawTokenTotal >= 0 ? rawTokenTotal : derivedTokenTotal);
+
+  return {
+    tokensEarned,
+    tokensSpent,
+    tokenTotal,
+  };
+}
+
+async function getStabilizedFeedbackLogRecord(recordId: string, initialRecord: any) {
+  let latestRecord = initialRecord;
+  let lastTokens = extractSafeTokenValues(initialRecord);
+
+  for (let i = 0; i < TOKEN_STABILIZE_ATTEMPTS; i++) {
+    await wait(TOKEN_STABILIZE_DELAY_MS);
+
+    const fetched = await knackService.getRecord('object_29', recordId);
+    if (!fetched?.id) {
+      continue;
+    }
+
+    const currentTokens = extractSafeTokenValues(fetched);
+    const isStable =
+      currentTokens.tokensEarned === lastTokens.tokensEarned &&
+      currentTokens.tokensSpent === lastTokens.tokensSpent &&
+      currentTokens.tokenTotal === lastTokens.tokenTotal;
+
+    latestRecord = fetched;
+    if (isStable) {
+      return latestRecord;
+    }
+
+    lastTokens = currentTokens;
+  }
+
+  return latestRecord;
+}
 
 export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
   let status = 200;
@@ -29,7 +102,9 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
   try {
     result = { msg: `sessionFeedbackBinderAnalyticLogToMonday executed` };
     // for (const record of bodyData?.records) {
-    const feedbackLogRecord = await knackService.getRecord('object_29', bodyData.id);
+    let feedbackLogRecord = await knackService.getRecord('object_29', bodyData.id);
+    feedbackLogRecord = await getStabilizedFeedbackLogRecord(feedbackLogRecord.id, feedbackLogRecord);
+    const safeTokenValues = extractSafeTokenValues(feedbackLogRecord);
 
     const studentRecords = await knackService.getRecords('object_1', {
       filters: { match: 'and', rules: [{ field: ConstColumn.Knack.Students.RecordId, operator: 'is', value: feedbackLogRecord.field_1328 }] },
@@ -146,9 +221,9 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
             [ConstColumn.SessionFeedbackLog.Behavior]: feedbackLogRecord.field_1468 ? { rating: Math.round(feedbackLogRecord.field_1468) } : null,
             [ConstColumn.SessionFeedbackLog.StudentStatus]: feedbackLogRecord.field_1284 || null,
             [ConstColumn.SessionFeedbackLog.FeedbackAlert]: previousFeedback?.replaceAll('<br />', '')?.replaceAll('"', "'") || null,
-            [ConstColumn.SessionFeedbackLog.TokensEarned]: Number(feedbackLogRecord.field_245?.replaceAll(',', '')) || 0,
-            [ConstColumn.SessionFeedbackLog.TokensSpent]: Number(feedbackLogRecord.field_242?.replaceAll(',', '')) || 0,
-            [ConstColumn.SessionFeedbackLog.TokenTotal]: Number(feedbackLogRecord.field_1016?.replaceAll(',', '')) || 0,
+            [ConstColumn.SessionFeedbackLog.TokensEarned]: safeTokenValues.tokensEarned,
+            [ConstColumn.SessionFeedbackLog.TokensSpent]: safeTokenValues.tokensSpent,
+            [ConstColumn.SessionFeedbackLog.TokenTotal]: safeTokenValues.tokenTotal,
             [ConstColumn.SessionFeedbackLog.ItemPurchased]: feedbackLogRecord.field_250 || null,
             [ConstColumn.SessionFeedbackLog.BehaviorReason]: feedbackLogRecord.field_1469?.replaceAll('<br />', '')?.replaceAll('"', "'") || null,
             [ConstColumn.SessionFeedbackLog.FeedbackType]: feedbackLogRecord.field_1636 || null,
@@ -239,9 +314,9 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
         if (user?.id) {
           createColumnValues[ConstColumn.SessionFeedbackLog.Tutor] = { personsAndTeams: [{ id: user.id, kind: 'person' }] };
         } else {
-          createColumnValues[ConstColumn.SessionFeedbackLog.TokensEarned] = Number(feedbackLogRecord.field_245?.replaceAll(',', '')) || 0;
-          createColumnValues[ConstColumn.SessionFeedbackLog.TokensSpent] = Number(feedbackLogRecord.field_242?.replaceAll(',', '')) || 0;
-          createColumnValues[ConstColumn.SessionFeedbackLog.TokenTotal] = Number(feedbackLogRecord.field_1016?.replaceAll(',', '')) || 0;
+          createColumnValues[ConstColumn.SessionFeedbackLog.TokensEarned] = safeTokenValues.tokensEarned;
+          createColumnValues[ConstColumn.SessionFeedbackLog.TokensSpent] = safeTokenValues.tokensSpent;
+          createColumnValues[ConstColumn.SessionFeedbackLog.TokenTotal] = safeTokenValues.tokenTotal;
         }
 
         const rs = await BlabMondayService.CreateItemWithValues(
@@ -370,7 +445,7 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
               BoardConstants.BinderAnalyticsData,
               binder.id,
               ConstColumn.BinderAnalyticsData.TotalTokens,
-              feedbackLogRecord.field_1016_raw,
+              safeTokenValues.tokenTotal,
             );
             result = { msg: `Updated Total Tokens in Binder Analytics in Monday for feedback log ID ${feedbackLogRecord.id}` };
 
