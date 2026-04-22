@@ -73,6 +73,7 @@ export async function readingCurriculumToMonday(bodyData) {
 
                 //Levels Completed
                 if (searchBySubject.field_1685 === 'Yes') {
+                  await levelCompleted(subitem, searchBySubject, skipped);
                   const mondayGroup = await BlabMondayService.GetBoardListGroup(searchBySubject.field_1038);
                   const readingGroups = mondayGroup?.groups?.filter((g) => g.title === 'Reading');
                   if (readingGroups.length > 0) {
