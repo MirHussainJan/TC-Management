@@ -32,6 +32,7 @@ export default class SHLDeductHoursService {
     //   triggerUuid,
     // } = eventData;
     const { boardId, pulseId, pulseName } = eventData;
+    const columnId = eventData?.columnId ?? null;
 
     let logData = {
       board_id: boardId,
@@ -46,6 +47,18 @@ export default class SHLDeductHoursService {
       if (!isAutomation) {
         const { mondayLog } = await LogService.StartLog(logData);
         dbData = mondayLog;
+      }
+
+      // Guard against broad "item updated" automations: only process when
+      // Attendance is the changed column. If columnId is absent, preserve
+      // legacy behavior for manual/internal invocations.
+      if (columnId && columnId !== ConstColumn.SHL.Attendance) {
+        Logger.log(`Skip ${EventName.DeductHours} for pulse ${pulseId}. Changed column: ${columnId}`);
+        await LogService.DoneLog({
+          dbData,
+          result: { msg: `Skipped - changed column is not attendance (${columnId})` },
+        });
+        return;
       }
 
       // let lastStep = dbData?.event_last_step ?? [];

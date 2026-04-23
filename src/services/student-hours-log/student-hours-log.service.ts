@@ -4,6 +4,7 @@ import amqp from 'amqplib/callback_api';
 import credentials from 'amqplib/lib/credentials';
 import SHLAddFromWSService from './shl-add-from-ws.service';
 import SHLAddFamilySHLService from './shl-add-family-shl.service';
+import SHLDeductHoursService from './shl-deduct-hours.service';
 
 export default class StudentHoursLogService {
   static rabbitChannel;
@@ -47,8 +48,9 @@ export default class StudentHoursLogService {
 
   static async DeductHours(eventData) {
     try {
-      await QueueService.SendQueue(QueueName.SHLDeductHours, eventData);
-      // await SHLDeductHoursService.DeductHours(eventData);
+      // Queue listeners are disabled in app bootstrap in this codebase,
+      // so execute directly to ensure the attendance flow always runs.
+      await SHLDeductHoursService.DeductHours(eventData);
     } catch (error) {
       throw error;
     }
