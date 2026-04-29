@@ -58,6 +58,47 @@ See `.env.example` for a full list. Key entries include:
 - ClickSend — SMS provider (username + API key)
 - Monday.com — API token
 
+## One-time repair: historical Session Feedback token mismatches
+
+Use this when token values were already pushed incorrectly to Monday before the sync fix.
+
+1. Run a dry-run first to see mismatches only (no writes):
+
+```bash
+npm run repair:session-feedback-tokens -- --from=2026-01-01 --to=2026-12-31
+```
+
+Dry-run with CSV export:
+
+```bash
+npm run repair:session-feedback-tokens -- --from=2026-01-01 --to=2026-12-31 --csv=./logs/token-repair-dryrun.csv
+```
+
+2. Apply fixes to Monday for mismatched records:
+
+```bash
+npm run repair:session-feedback-tokens -- --from=2026-01-01 --to=2026-12-31 --apply
+```
+
+Apply with CSV export:
+
+```bash
+npm run repair:session-feedback-tokens -- --from=2026-01-01 --to=2026-12-31 --apply --csv=./logs/token-repair-apply.csv
+```
+
+Optional flags:
+
+- `--record-id=RECORD_ID` (repeatable) or `--record-ids=id1,id2`
+- `--student-id=STUDENT_ID`
+- `--limit=NUMBER`
+- `--csv=PATH_TO_FILE.csv`
+
+What it updates:
+
+- Board: Session Feedback Log (`BoardConstants.SessionFeedbackLog`)
+- Columns: `TokensEarned` (`numbers0`), `TokensSpent` (`numbers2`), `TokenTotal` (`numbers8`)
+- Source of truth: Knack feedback log object (`object_29`) values (`field_245`, `field_242`, `field_1016` with safe normalization)
+
 ## Database (brief descriptions)
 
 - Account tokens (`src/db/models/account-token.model.ts`): stores tokens used by the TC dashboard. Each record holds a user's token so the frontend/dashboard can fetch and display user-specific information.

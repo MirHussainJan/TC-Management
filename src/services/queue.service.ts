@@ -6,6 +6,15 @@ import SHLAuditedRemainingHourService from './student-hours-log/shl-audited-rema
 import SHLAddFromWSService from './student-hours-log/shl-add-from-ws.service';
 import Logger from '../helper/logger';
 import axios from 'axios';
+import { randomUUID } from 'crypto';
+import * as ReadingCurriculumService from './curriculum/reading-curriculum-to-monday.service';
+import * as SessionFeedbackBinderAnalyticLogService from './curriculum/session-feedback-binder-analytic-log-to-monday.service';
+
+const RABBITMQ_URL = () =>
+  `amqp://${process.env.RABBITMQ_URL || 'localhost'}:${process.env.RABBITMQ_PORT || '5672'}/${process.env.RABBITMQ_VHOST || 'tc'}?heartbeat=60`;
+
+const RABBITMQ_CREDENTIALS = () =>
+  credentials.plain(process.env.RABBITMQ_USERNAME || 'dev', process.env.RABBITMQ_PASSWORD || 'Tutoringclub@321');
 
 export default class QueueService {
   // static rabbitChannel: any;
@@ -80,7 +89,136 @@ export default class QueueService {
     this.ListenerSHLDeductHours();
     this.ListenerSHLAuditedRemainingHour();
     this.ListenerSHLAddFromWS();
+    this.ListenerReadingCurriculumToMonday();
+    this.ListenerSessionFeedbackBinderAnalyticLogToMonday();
     // this.ListenerForwardWebhook();
+  }
+
+  static SendDurableQueue(queueName, bodyData): Promise<string> {
+    const jobId = randomUUID();
+    const msg = { jobId, bodyData, createdAt: new Date().toISOString() };
+
+    return new Promise((resolve, reject) => {
+      amqp.connect(RABBITMQ_URL(), { credentials: RABBITMQ_CREDENTIALS() }, (err, conn) => {
+        if (err) {
+          Logger.log(`SendDurableQueue ${queueName} connect error: ${err}`);
+          reject(err);
+          return;
+        }
+
+        conn.createConfirmChannel((channelError, channel) => {
+          if (channelError) {
+            Logger.log(`SendDurableQueue ${queueName} channel error: ${channelError}`);
+            conn.close();
+            reject(channelError);
+            return;
+          }
+
+          channel.assertQueue(queueName, { durable: true }, (assertError) => {
+            if (assertError) {
+              Logger.log(`SendDurableQueue ${queueName} assert error: ${assertError}`);
+              conn.close();
+              reject(assertError);
+              return;
+            }
+
+            channel.sendToQueue(queueName, Buffer.from(JSON.stringify(msg)), {
+              persistent: true,
+              messageId: jobId,
+              timestamp: Date.now(),
+            });
+
+            channel.waitForConfirms((confirmError) => {
+              conn.close();
+
+              if (confirmError) {
+                Logger.log(`SendDurableQueue ${queueName} confirm error: ${confirmError}`);
+                reject(confirmError);
+                return;
+              }
+
+              Logger.log(`SendDurableQueue ${queueName} queued job ${jobId}`);
+              resolve(jobId);
+            });
+          });
+        });
+      });
+    });
+  }
+
+  static async ListenerReadingCurriculumToMonday() {
+    this.ListenDurableQueue(QueueName.ReadingCurriculumToMonday, async (bodyData) => {
+      const result = await ReadingCurriculumService.readingCurriculumToMonday(bodyData);
+      if (result?.status >= 500) {
+        throw new Error(result?.message || 'Reading Curriculum To Monday failed');
+      }
+    });
+  }
+
+  static async ListenerSessionFeedbackBinderAnalyticLogToMonday() {
+    this.ListenDurableQueue(QueueName.SessionFeedbackBinderAnalyticLogToMonday, async (bodyData) => {
+      const result = await SessionFeedbackBinderAnalyticLogService.sessionFeedbackBinderAnalyticLogToMonday(bodyData);
+      if (result?.status >= 500) {
+        throw new Error(result?.message || 'Session Feedback Binder Analytic Log To Monday failed');
+      }
+    });
+  }
+
+  static ListenDurableQueue(queueName, handler: (bodyData: any) => Promise<void>) {
+    amqp.connect(RABBITMQ_URL(), { credentials: RABBITMQ_CREDENTIALS() }, async (err, conn) => {
+      if (err) {
+        Logger.log(`ListenDurableQueue ${queueName} connect error: ${err}`);
+        setTimeout(() => this.ListenDurableQueue(queueName, handler), 10000);
+        return;
+      }
+
+      conn.on('error', function (connError) {
+        if (connError.message !== 'Connection closing') {
+          Logger.log(`ListenDurableQueue ${queueName} connection error: ${connError}`);
+        }
+      });
+
+      conn.on('close', () => {
+        Logger.log(`ListenDurableQueue ${queueName} connection closed; reconnecting`);
+        setTimeout(() => this.ListenDurableQueue(queueName, handler), 10000);
+      });
+
+      await conn.createChannel(async (channelError, channel) => {
+        if (channelError) {
+          Logger.log(`ListenDurableQueue ${queueName} channel error: ${channelError}`);
+          conn.close();
+          return;
+        }
+
+        await channel.assertQueue(queueName, { durable: true });
+        channel.prefetch(1);
+        Logger.log(`ListenDurableQueue ${queueName} listening`);
+
+        await channel.consume(
+          queueName,
+          async (msg) => {
+            if (!msg) {
+              return;
+            }
+
+            const content = msg.content.toString();
+            let msgEntity = null;
+
+            try {
+              msgEntity = JSON.parse(content);
+              Logger.log(`ListenDurableQueue ${queueName} received job ${msgEntity?.jobId || 'unknown'}`);
+              await handler(msgEntity?.bodyData);
+              channel.ack(msg);
+              Logger.log(`ListenDurableQueue ${queueName} completed job ${msgEntity?.jobId || 'unknown'}`);
+            } catch (processError) {
+              Logger.log(`ListenDurableQueue ${queueName} failed job ${msgEntity?.jobId || 'unknown'}: ${processError}`);
+              channel.nack(msg, false, true);
+            }
+          },
+          { noAck: false },
+        );
+      });
+    });
   }
 
   static async ListenerSHLDeductHours() {

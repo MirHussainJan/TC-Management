@@ -52,7 +52,7 @@ app.use(routes);
 app.listen(port, () => {
   console.log(`App listening at http://localhost:${port}`);
 
-  // QueueService.Listeners();
+  QueueService.Listeners();
 });
 
 export default app;

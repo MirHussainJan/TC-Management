@@ -944,6 +944,35 @@ export default class ProgressChartService {
             }
             return result;
           }
+          function countByMonthFromBinderAnalyticsSubitems(subitems, predicate) {
+            const monthMap = {
+              '01': 'jan',
+              '02': 'feb',
+              '03': 'mar',
+              '04': 'apr',
+              '05': 'may',
+              '06': 'jun',
+              '07': 'jul',
+              '08': 'aug',
+              '09': 'sept',
+              '10': 'oct',
+              '11': 'nov',
+              '12': 'dec',
+            };
+            const result = { jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0, jul: 0, aug: 0, sept: 0, oct: 0, nov: 0, dec: 0 };
+            for (const sub of subitems || []) {
+              const subjectText =
+                _.find(sub.column_values, (cv) => cv.id === ConstColumn.SubBinderAnalyticsData.SubjtectsWorkedOn)?.text?.toLowerCase() || '';
+              if (!predicate(subjectText)) continue;
+              const dateCol = (sub.column_values || []).find((cv) => cv.id === 'date0' && cv.text);
+              if (dateCol?.text && dateCol.text.length >= 7) {
+                const mm = dateCol.text.substring(5, 7);
+                const mKey = monthMap[mm];
+                if (mKey) result[mKey]++;
+              }
+            }
+            return result;
+          }
           // brReading: tổng hợp subitems của tất cả beginning reader
           let brReading = { jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0, jul: 0, aug: 0, sept: 0, oct: 0, nov: 0, dec: 0 };
           for (const br of studentBinderData?.sbdBeginningReader || []) {
@@ -973,6 +1002,25 @@ export default class ProgressChartService {
             const r = countByMonthFromSubitems(m.subitems);
             Object.keys(mathMonth).forEach((k) => (mathMonth[k] += r[k]));
           }
+          // SAT/ACT prep sessions are tracked in Binder Analytics subitems, so add them into report rollups.
+          const satActReading = countByMonthFromBinderAnalyticsSubitems(
+            _.get(binderAnalyticsData?.[0], 'subitems'),
+            (subjectText) =>
+              subjectText.includes('sat r') ||
+              subjectText.includes('act r') ||
+              subjectText.includes('sat reading') ||
+              subjectText.includes('act reading'),
+          );
+          const satActMath = countByMonthFromBinderAnalyticsSubitems(
+            _.get(binderAnalyticsData?.[0], 'subitems'),
+            (subjectText) =>
+              subjectText.includes('sat m') ||
+              subjectText.includes('act m') ||
+              subjectText.includes('sat math') ||
+              subjectText.includes('act math'),
+          );
+          Object.keys(readingCom).forEach((k) => (readingCom[k] += satActReading[k]));
+          Object.keys(mathMonth).forEach((k) => (mathMonth[k] += satActMath[k]));
           // writing: tổng hợp subitems của tất cả writing
           let writing = { jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0, jul: 0, aug: 0, sept: 0, oct: 0, nov: 0, dec: 0 };
           for (const w of studentBinderData?.sbdWriting || []) {

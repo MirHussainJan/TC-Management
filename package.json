@@ -6,6 +6,7 @@
     "dev": "npm run server",
     "dev-server": "ts-node-dev --transpile-only --skip-ignore --watch ./.env ./src/app.ts",
     "server": "ts-node --transpile-only --skipIgnore ./src/app.ts",
+    "repair:session-feedback-tokens": "ts-node --transpile-only --skipIgnore ./src/scripts/reconcile-session-feedback-token-columns.ts",
     "expose": "ngrok http 8308",
     "stop": "kill-port 8308 && kill-port 4049 && kill-port 4040",
     "build": "npx tsc"

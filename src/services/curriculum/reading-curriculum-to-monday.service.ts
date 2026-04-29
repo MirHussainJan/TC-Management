@@ -56,14 +56,14 @@ export async function readingCurriculumToMonday(bodyData) {
         ['status5'],
       );
       result = { msg: `search on monday: ${searchMonday?.length}` };
-      searchMonday?.forEach(async (item) => {
+      for (const item of searchMonday || []) {
         Logger.log(`Reading Curriculum found on Monday: ${JSON.stringify(item)}`);
         if (item.group?.id === 'group_title') {
           const getItemWithSubitem = await BlabMondayService.GetItemById(item.id, [], false, false, true);
           const updateMonday = await BlabMondayService.ChangeSimpleColumnValue(searchBySubject.field_1038_raw, item.id, 'status5', 'Active');
           Logger.log(`Reading Curriculum Updated to Active on Monday: ${JSON.stringify(updateMonday)}`);
           if (getItemWithSubitem.subitems?.length > 0) {
-            getItemWithSubitem.subitems.forEach(async (subitem) => {
+            for (const subitem of getItemWithSubitem.subitems) {
               if (subitem.name === searchBySubject.field_1053) {
                 const skipped = await SkippedLessonSessions(searchBySubject);
                 //IN PROGRESS
@@ -181,7 +181,7 @@ export async function readingCurriculumToMonday(bodyData) {
                 Logger.log(`No Subitems found for Reading Curriculum Item on Monday: ${item.id}`);
                 result = { msg: `No Subitems found for Reading Curriculum Item on Monday: ${item.id}` };
               }
-            });
+            }
           } else {
             Logger.log(`No Subitems found for Reading Curriculum Item on Monday: ${item.id}`);
             result = { msg: `No Subitems found for Reading Curriculum Item on Monday: ${item.id}` };
@@ -190,7 +190,7 @@ export async function readingCurriculumToMonday(bodyData) {
           result = { msg: `Reading Curriculum Item is not in Title Group` };
           Logger.log(`Reading Curriculum Item is not in Title Group: ${JSON.stringify(item)}`);
         }
-      });
+      }
     } else {
       result = { msg: `No Reading Curriculum found in Knack - Reading Curriculum Copy` };
     }
@@ -489,5 +489,5 @@ async function levelCompleted(subitem, searchBySubject, skipped) {
 
 function getColumnValuesById(source, id, getValueType = 0) {
   const rs = source?.column_values?.filter((s) => s.id === id)?.[0];
-  return (getValueType === 0 ? rs?.text || null : getValueType === 1 ? rs?.value || null : getValueType === 2 ? rs?.display_value || null : null) || null;
+  return (getValueType === 0 ? rs?.text || '' : getValueType === 1 ? rs?.value || null : getValueType === 2 ? rs?.display_value || null : null) || '';
 }

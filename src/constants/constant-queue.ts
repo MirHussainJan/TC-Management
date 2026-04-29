@@ -5,4 +5,6 @@ export const QueueName = {
   SHLAuditedRemainingHourAuto: 'SHLAuditedRemainingHourAuto',
   ForwardWebhook: 'ForwardWebhook',
   SHLAddFromWS: 'SHLAddFromWS',
+  ReadingCurriculumToMonday: 'ReadingCurriculumToMonday',
+  SessionFeedbackBinderAnalyticLogToMonday: 'SessionFeedbackBinderAnalyticLogToMonday',
 };
