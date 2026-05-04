@@ -85,6 +85,110 @@ async function getStabilizedFeedbackLogRecord(recordId: string, initialRecord: a
   return latestRecord;
 }
 
+function getMondayId(value: any) {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === 'number' || typeof value === 'string') {
+    const parsed = String(value).trim();
+    return parsed.length ? parsed : null;
+  }
+
+  if (typeof value === 'object') {
+    return getMondayId(value.id || value.text || value.value);
+  }
+
+  return null;
+}
+
+async function ensureSessionFeedbackItem(feedbackLogRecord: any, studentRecords: any, itemName: string, columnValues: any) {
+  const existingMondayItemId = getMondayId(feedbackLogRecord.field_1710);
+  if (existingMondayItemId) {
+    Logger.log(`Session Feedback Log item already exists for feedback log ${feedbackLogRecord.id}: ${existingMondayItemId}`);
+    return existingMondayItemId;
+  }
+
+  const existingItems = await BlabMondayService.GetItemsPageByColumnValues(BoardConstants.SessionFeedbackLog, [
+    { column_id: ConstColumn.SessionFeedbackLog.StudentName, column_values: [feedbackLogRecord.field_239_raw?.[0]?.identifier] },
+    { column_id: ConstColumn.SessionFeedbackLog.Date, column_values: [moment(feedbackLogRecord.field_1022_raw?.date, 'MM/DD/YYYY').format('YYYY-MM-DD')] },
+  ]);
+  const existingItem = existingItems?.find((item) => item.name === itemName);
+
+  if (existingItem?.id) {
+    Logger.log(`Session Feedback Log item found by name/date for feedback log ${feedbackLogRecord.id}: ${existingItem.id}`);
+    await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+      field_1710: existingItem.id,
+      field_1711: {
+        url: `https://tutoringclub-stjohns.monday.com/boards/4911698347/views/152869316/pulses/${existingItem.id}`,
+        label: `https://tutoringclub-stjohns.monday.com/boards/4911698347/views/152869316/pulses/${existingItem.id}`,
+      },
+      field_1715: columnValues[ConstColumn.SessionFeedbackLog.SessionNumber],
+      field_1820: 'Submission Successful',
+    });
+    return existingItem.id;
+  }
+
+  const createdItemId = await BlabMondayService.CreateItemWithValues(BoardConstants.SessionFeedbackLog, itemName, columnValues);
+  await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+    field_1710: createdItemId,
+    field_1711: {
+      url: `https://tutoringclub-stjohns.monday.com/boards/4911698347/views/152869316/pulses/${createdItemId}`,
+      label: `https://tutoringclub-stjohns.monday.com/boards/4911698347/views/152869316/pulses/${createdItemId}`,
+    },
+    field_1715: columnValues[ConstColumn.SessionFeedbackLog.SessionNumber],
+    field_1820: 'Submission Successful',
+  });
+  return createdItemId;
+}
+
+async function ensureAlertFeedbackItem(feedbackLogRecord: any, itemName: string, columnValues: any) {
+  const existingItems = await BlabMondayService.GetItemsPageByColumnValues(BoardConstants.SessionFeedbackLog, [
+    { column_id: ConstColumn.SessionFeedbackLog.Date, column_values: [moment(feedbackLogRecord.field_1022_raw?.date, 'MM/DD/YYYY').format('YYYY-MM-DD')] },
+  ]);
+  const existingItem = existingItems?.find((item) => item.name === itemName);
+
+  if (existingItem?.id) {
+    Logger.log(`Alert Session Feedback Log item found by name/date for feedback log ${feedbackLogRecord.id}: ${existingItem.id}`);
+    return existingItem.id;
+  }
+
+  return BlabMondayService.CreateItemWithValues(BoardConstants.SessionFeedbackLog, itemName, columnValues);
+}
+
+async function ensureBinderAnalyticsSubitem(feedbackLogRecord: any, binder: any, subitemName: string, columnValues: any) {
+  const existingMondaySubitemId = getMondayId(feedbackLogRecord.field_1712);
+  if (existingMondaySubitemId) {
+    Logger.log(`Binder Analytics subitem already exists for feedback log ${feedbackLogRecord.id}: ${existingMondaySubitemId}`);
+    return existingMondaySubitemId;
+  }
+
+  const binderWithSubitems = await BlabMondayService.GetItemById(binder.id, [], false, false, true);
+  const existingSubitem = binderWithSubitems?.subitems?.find((subitem) => subitem.name === subitemName);
+
+  if (existingSubitem?.id) {
+    Logger.log(`Binder Analytics subitem found by name for feedback log ${feedbackLogRecord.id}: ${existingSubitem.id}`);
+    await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+      field_1712: existingSubitem.id,
+      field_1713: {
+        url: `https://tutoringclub-stjohns.monday.com/boards/5714515483/pulses/${existingSubitem.id}`,
+        label: `https://tutoringclub-stjohns.monday.com/boards/5714515483/pulses/${existingSubitem.id}`,
+      },
+    });
+    return existingSubitem.id;
+  }
+
+  const createdSubitemId = await BlabMondayService.CreateSubitemWithValues(binder.id, subitemName, columnValues);
+  await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+    field_1712: createdSubitemId,
+    field_1713: {
+      url: `https://tutoringclub-stjohns.monday.com/boards/5714515483/pulses/${createdSubitemId}`,
+      label: `https://tutoringclub-stjohns.monday.com/boards/5714515483/pulses/${createdSubitemId}`,
+    },
+  });
+  return createdSubitemId;
+}
+
 export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
   let status = 200;
   let message = 'Session feedback binder analytic log processed successfully';
@@ -241,23 +345,10 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
           if (user?.id) {
             createColumnValues[ConstColumn.SessionFeedbackLog.Tutor] = { personsAndTeams: [{ id: user.id, kind: 'person' }] };
           }
-          const rs = await BlabMondayService.CreateItemWithValues(
-            BoardConstants.SessionFeedbackLog,
-            `${feedbackLogRecord.field_239_raw?.[0]?.identifier}${feedbackLogRecord.field_240?.length ? ' - ' + feedbackLogRecord.field_240 : ''}${feedbackLogRecord.field_1021?.length ? ' - ' + feedbackLogRecord.field_1021 : ''}${feedbackLogRecord.field_1585?.length > 0 ? ' - ' + feedbackLogRecord.field_1585 : ''}${feedbackLogRecord.field_1566?.length > 0 ? ', ' + feedbackLogRecord.field_1566 : ''}`,
-            createColumnValues,
-          );
-
-          await knackService.updateRecord('object_29', feedbackLogRecord.id, {
-            field_1710: rs,
-            field_1711: {
-              url: `https://tutoringclub-stjohns.monday.com/boards/4911698347/views/152869316/pulses/${rs}`,
-              label: `https://tutoringclub-stjohns.monday.com/boards/4911698347/views/152869316/pulses/${rs}`,
-            },
-            field_1715: Number(studentRecords?.records?.[0]?.field_1709) + Number(sessionNumber),
-            field_1820: 'Submission Successful',
-          });
+          const itemName = `${feedbackLogRecord.field_239_raw?.[0]?.identifier}${feedbackLogRecord.field_240?.length ? ' - ' + feedbackLogRecord.field_240 : ''}${feedbackLogRecord.field_1021?.length ? ' - ' + feedbackLogRecord.field_1021 : ''}${feedbackLogRecord.field_1585?.length > 0 ? ' - ' + feedbackLogRecord.field_1585 : ''}${feedbackLogRecord.field_1566?.length > 0 ? ', ' + feedbackLogRecord.field_1566 : ''}`;
+          const rs = await ensureSessionFeedbackItem(feedbackLogRecord, studentRecords, itemName, createColumnValues);
           console.log('Created feedback log in Monday for feedback log ID ', feedbackLogRecord.id);
-          result = { msg: `Created feedback log in Monday for feedback log ID ${feedbackLogRecord.id}` };
+          result = { msg: `Session Feedback Log item processed in Monday for feedback log ID ${feedbackLogRecord.id}: ${rs}` };
         }
       }
 
@@ -319,13 +410,10 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
           createColumnValues[ConstColumn.SessionFeedbackLog.TokenTotal] = safeTokenValues.tokenTotal;
         }
 
-        const rs = await BlabMondayService.CreateItemWithValues(
-          BoardConstants.SessionFeedbackLog,
-          `${feedbackLogRecord.field_1026}${feedbackLogRecord.field_239_raw?.[0]?.identifier?.length ? ' - ' + feedbackLogRecord.field_239_raw?.[0]?.identifier : ''}${studentRecords?.records?.[0]?.field_497_raw?.timestamp?.length ? ' - ' + moment(studentRecords?.records?.[0]?.field_497_raw?.timestamp).format('MM/DD/YYYY') : ''}${feedbackLogRecord.field_1021?.length ? ' - ' + feedbackLogRecord.field_1021 : ''}`,
-          createColumnValues,
-        );
+        const alertItemName = `${feedbackLogRecord.field_1026}${feedbackLogRecord.field_239_raw?.[0]?.identifier?.length ? ' - ' + feedbackLogRecord.field_239_raw?.[0]?.identifier : ''}${studentRecords?.records?.[0]?.field_497_raw?.timestamp?.length ? ' - ' + moment(studentRecords?.records?.[0]?.field_497_raw?.timestamp).format('MM/DD/YYYY') : ''}${feedbackLogRecord.field_1021?.length ? ' - ' + feedbackLogRecord.field_1021 : ''}`;
+        const rs = await ensureAlertFeedbackItem(feedbackLogRecord, alertItemName, createColumnValues);
         console.log('Alert created in Monday for feedback log ID ', feedbackLogRecord);
-        result = { msg: `Alert created in Monday for feedback log ID ${feedbackLogRecord.id}` };
+        result = { msg: `Alert processed in Monday for feedback log ID ${feedbackLogRecord.id}: ${rs}` };
       }
 
       //Slack Notif
@@ -417,24 +505,13 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
 
           for (const student of studentDatabase) {
             const numberOfSession = student.column_values.filter((c) => c.id === ConstColumn.SD.NumberOfSession)?.[0]?.text;
-            const resultCreateSubitem = await BlabMondayService.CreateSubitemWithValues(
-              binder.id,
-              `${Number(numberOfSession) + Number(studentRecords.records?.[0]?.field_1709)} - ${feedbackLogRecord.field_1022_raw?.date} - ${subject}`,
-              {
-                [ConstColumn.BinderAnalyticsData.TotalTimeTimeMissed]: Number(feedbackLogRecord.field_1800_raw || 0),
-              },
-            );
+            const subitemName = `${Number(numberOfSession) + Number(studentRecords.records?.[0]?.field_1709)} - ${feedbackLogRecord.field_1022_raw?.date} - ${subject}`;
+            const resultCreateSubitem = await ensureBinderAnalyticsSubitem(feedbackLogRecord, binder, subitemName, {
+              [ConstColumn.BinderAnalyticsData.TotalTimeTimeMissed]: Number(feedbackLogRecord.field_1800_raw || 0),
+            });
 
             result = { msg: `resultCreateSubitem ${JSON.stringify(resultCreateSubitem)}` };
-            result = { msg: `Created Binder Analytics Subitem in Monday for feedback log ID ${feedbackLogRecord.id}` };
-
-            await knackService.updateRecord('object_29', feedbackLogRecord.id, {
-              field_1712: resultCreateSubitem,
-              field_1713: {
-                url: `https://tutoringclub-stjohns.monday.com/boards/5714515483/pulses/${resultCreateSubitem}`,
-                label: `https://tutoringclub-stjohns.monday.com/boards/5714515483/pulses/${resultCreateSubitem}`,
-              },
-            });
+            result = { msg: `Binder Analytics Subitem processed in Monday for feedback log ID ${feedbackLogRecord.id}` };
             result = { msg: `Updated Binder Analytics fields in Knack for feedback log ID ${feedbackLogRecord.id}` };
             //Add Subject
             await BlabMondayService.ChangeSimpleColumnValue(6311984142, resultCreateSubitem, 'subjects', subject);

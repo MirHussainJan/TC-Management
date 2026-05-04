@@ -212,7 +212,7 @@ export default class QueueService {
               Logger.log(`ListenDurableQueue ${queueName} completed job ${msgEntity?.jobId || 'unknown'}`);
             } catch (processError) {
               Logger.log(`ListenDurableQueue ${queueName} failed job ${msgEntity?.jobId || 'unknown'}: ${processError}`);
-              channel.nack(msg, false, true);
+              channel.nack(msg, false, false);
             }
           },
           { noAck: false },
