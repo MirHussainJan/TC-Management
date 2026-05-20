@@ -6,5 +6,5 @@ dist/
 gapikey.json
 server-test.log
 pnpm-lock.yaml
-src\scripts
+src/scripts
 README.md

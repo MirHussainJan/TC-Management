@@ -56,6 +56,32 @@ function extractSafeTokenValues(record: any) {
   };
 }
 
+async function syncStudentCurrentTotalTokens(feedbackLogRecord: any, tokenTotal: number) {
+  const studentRecordId = feedbackLogRecord?.field_1328;
+  if (!studentRecordId) {
+    return;
+  }
+
+  const studentRecords = await knackService.getRecords('object_1', {
+    filters: { match: 'and', rules: [{ field: ConstColumn.Knack.Students.RecordId, operator: 'is', value: studentRecordId }] },
+  });
+  const studentKnackRecord = studentRecords?.records?.[0];
+  if (!studentKnackRecord?.id) {
+    return;
+  }
+
+  const currentValue = parseNumberSafe(studentKnackRecord?.field_1799);
+  const manualSyncValue = parseNumberSafe(studentKnackRecord?.field_1936);
+  if (currentValue === tokenTotal && manualSyncValue === tokenTotal) {
+    return;
+  }
+
+  await knackService.updateRecord('object_1', studentKnackRecord.id, {
+    field_1799: tokenTotal,
+    field_1936: tokenTotal,
+  });
+}
+
 async function getStabilizedFeedbackLogRecord(recordId: string, initialRecord: any) {
   let latestRecord = initialRecord;
   let lastTokens = extractSafeTokenValues(initialRecord);
@@ -209,6 +235,7 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
     let feedbackLogRecord = await knackService.getRecord('object_29', bodyData.id);
     feedbackLogRecord = await getStabilizedFeedbackLogRecord(feedbackLogRecord.id, feedbackLogRecord);
     const safeTokenValues = extractSafeTokenValues(feedbackLogRecord);
+    await syncStudentCurrentTotalTokens(feedbackLogRecord, safeTokenValues.tokenTotal);
 
     const studentRecords = await knackService.getRecords('object_1', {
       filters: { match: 'and', rules: [{ field: ConstColumn.Knack.Students.RecordId, operator: 'is', value: feedbackLogRecord.field_1328 }] },
