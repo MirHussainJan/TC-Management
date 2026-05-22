@@ -111,6 +111,58 @@ async function getStabilizedFeedbackLogRecord(recordId: string, initialRecord: a
   return latestRecord;
 }
 
+async function ensurePreviousTokenCarryForward(feedbackLogRecord: any) {
+  const studentRecordId = String(feedbackLogRecord?.field_1328 || '').trim();
+  if (!studentRecordId) {
+    return feedbackLogRecord;
+  }
+
+  const currentSeq = parseNumberSafe(feedbackLogRecord?.field_238);
+  if (!currentSeq) {
+    return feedbackLogRecord;
+  }
+
+  const logs = await knackService.getRecords('object_29', {
+    rows_per_page: 1000,
+    filters: { match: 'and', rules: [{ field: 'field_1328', operator: 'is', value: studentRecordId }] },
+  });
+  const rows = logs?.records || [];
+  if (!rows.length) {
+    return feedbackLogRecord;
+  }
+
+  rows.sort((a, b) => {
+    const aSeq = parseNumberSafe(a?.field_238);
+    const bSeq = parseNumberSafe(b?.field_238);
+    if (aSeq !== bSeq) return aSeq - bSeq;
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  });
+
+  const idx = rows.findIndex((r) => String(r?.id) === String(feedbackLogRecord?.id));
+  if (idx <= 0) {
+    return feedbackLogRecord;
+  }
+
+  const prevRow = rows[idx - 1];
+  const expectedPrevTotal = parseNumberSafe(prevRow?.field_1016 ?? prevRow?.field_1016_raw);
+  const currentPrevTotal = parseNumberSafe(feedbackLogRecord?.field_1003 ?? feedbackLogRecord?.field_1003_raw);
+
+  if (currentPrevTotal === expectedPrevTotal) {
+    return feedbackLogRecord;
+  }
+
+  Logger.log(
+    `Fixing feedback carry-forward for ${feedbackLogRecord.id}: field_1003 ${currentPrevTotal} -> ${expectedPrevTotal} (student ${studentRecordId})`,
+  );
+  await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+    field_1003: expectedPrevTotal,
+  });
+
+  // Re-fetch once so subsequent logic uses corrected totals.
+  const corrected = await knackService.getRecord('object_29', feedbackLogRecord.id);
+  return corrected?.id ? corrected : feedbackLogRecord;
+}
+
 function getMondayId(value: any) {
   if (!value) {
     return null;
@@ -234,6 +286,7 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
     // for (const record of bodyData?.records) {
     let feedbackLogRecord = await knackService.getRecord('object_29', bodyData.id);
     feedbackLogRecord = await getStabilizedFeedbackLogRecord(feedbackLogRecord.id, feedbackLogRecord);
+    feedbackLogRecord = await ensurePreviousTokenCarryForward(feedbackLogRecord);
     const safeTokenValues = extractSafeTokenValues(feedbackLogRecord);
     await syncStudentCurrentTotalTokens(feedbackLogRecord, safeTokenValues.tokenTotal);
 
