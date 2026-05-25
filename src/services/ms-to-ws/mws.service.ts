@@ -70,7 +70,7 @@ export default class MWSService {
             if (tutorPAT?.length || overrideEESchedule === 'Enable') {
               columnValues[ConstColumn.WS.Tutors] = { personsAndTeams: tutorPAT };
             }
-            if (tutorsOff.includes(userName) && overrideEESchedule !== 'Enable') {
+            if (tutorsOff?.includes(userName) && overrideEESchedule !== 'Enable') {
               columnValues[ConstColumn.WS.TutorAvailability] = Constants.NotAvailable;
             }
 
@@ -181,6 +181,7 @@ export default class MWSService {
     return item?.column_values?.find((col) => col.id === id)?.[isValue ? 'value' : 'text'];
   }
   static removeCommonIds(flatMapTutorAvailableTAM, patWS) {
+    if (!Array.isArray(patWS) || !patWS.length) return flatMapTutorAvailableTAM || [];
     return flatMapTutorAvailableTAM?.filter((id) => !patWS.includes(id));
   }
 

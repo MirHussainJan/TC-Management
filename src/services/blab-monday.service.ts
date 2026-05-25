@@ -261,8 +261,7 @@ class BlabMondayService extends AppBaseService {
     }
   }`;
     const rs = await this.post(query);
-
-    return rs?.data?.boards?.[0]?.groups || [];
+    return rs?.data?.boards?.[0]?.groups?.[0]?.items_page?.items || [];
   }
 
   static async getBoardItemsCount(boardId: number) {

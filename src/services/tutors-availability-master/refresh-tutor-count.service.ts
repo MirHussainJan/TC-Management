@@ -51,12 +51,11 @@ export default class RefreshTutorCountService {
 
       if (TAMItem?.column_values?.length) {
         const tutorAvailable         = _.find(TAMItem.column_values, (s) => s.id === ConstColumn.TAM.TutorsAvailable);
-        const tutorAvailableNameList = tutorAvailable?.text?.split(',');
         const tutorAvailableId       = await CommonService.getUserIdFromPeopleColumn(tutorAvailable);
         const weekDayTAM             = _.find(TAMItem.column_values, (s) => s.id === ConstColumn.TAM.Weekday)?.text;
         const sessionTAM             = _.find(TAMItem.column_values, (s) => s.id === ConstColumn.TAM.Session)?.text;
-        Logger.log(`tutorAvailableNameList: ${tutorAvailableNameList?.length}`);
-        if (tutorAvailableNameList?.length) {
+        Logger.log(`tutorAvailableCount: ${tutorAvailableId?.length || 0}`);
+        if (tutorAvailableId?.length) {
           const listGroupsMS = await CommonService.getBoardListGroups(BoardConstants.MS);
           const groupTitle   = `${weekDayTAM} - ${sessionTAM}`;
           const groupIdMS    = _.find(listGroupsMS, (s) => s.title === groupTitle)?.id;

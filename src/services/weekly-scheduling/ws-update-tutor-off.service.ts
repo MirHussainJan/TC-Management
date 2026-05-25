@@ -143,40 +143,40 @@ export default class WSUpdateTutorOffService {
                 const attendance = ws?.length ? _.find(ws, (s) => s.id === ConstColumn.WS.Attendance)?.text : null;
                 if (attendance && attendance !== Constants.SideWork) {
                   const sessionWS  = CommonService.sessionToNumber(_.find(ws,
-                    (s) => s.id === ConstColumn.WS.DateOfSession)?.text);
-                  const tutor      = _.find(ws, (s) => s.id === ConstColumn.WS.Tutors)?.text;
+                    (s) => s.id === ConstColumn.WS.Session)?.text);
+                  const tutor      = _.find(ws, (s) => s.id === ConstColumn.WS.Tutors)?.text || '';
                   let notAvailable = !!etorFullDayItemsUser?.some(item => tutor.includes(item));
 
                   const leaveEarlierIds = etorPartialLeaveEarlier?.length
                     ? _.filter(etorPartialLeaveEarlier, (item) => {
-                      const session  = CommonService.sessionToNumber(_.find(item,
+                      const session  = CommonService.sessionToNumber(_.find(item.column_values,
                         (s) => s.id === ConstColumn.ETOR.FirstLastSession)?.text);
-                      const etorUser = _.find(item, (s) => s.id === ConstColumn.ETOR.MondayUser);
-                      notAvailable   = _.includes(tutor, etorUser) ? true : notAvailable;
+                      const etorUser = _.find(item.column_values, (s) => s.id === ConstColumn.ETOR.MondayUser)?.display_value;
+                      notAvailable   = etorUser?.length && _.includes(tutor, etorUser) ? true : notAvailable;
                       return sessionWS >= session;
-                    })
+                    }).map((s) => s.id)
                     : [];
 
                   const startLaterIds = etorPartialStartLater?.length
                     ? _.filter(etorPartialStartLater, (item) => {
-                      const session  = CommonService.sessionToNumber(_.find(item,
+                      const session  = CommonService.sessionToNumber(_.find(item.column_values,
                         (s) => s.id === ConstColumn.ETOR.FirstLastSession)?.text);
-                      const etorUser = _.find(item, (s) => s.id === ConstColumn.ETOR.MondayUser);
-                      notAvailable   = _.includes(tutor, etorUser) ? true : notAvailable;
+                      const etorUser = _.find(item.column_values, (s) => s.id === ConstColumn.ETOR.MondayUser)?.display_value;
+                      notAvailable   = etorUser?.length && _.includes(tutor, etorUser) ? true : notAvailable;
                       return sessionWS < session;
-                    })
+                    }).map((s) => s.id)
                     : [];
 
                   const middleIds  = etorPartialMiddle?.length
                     ? _.filter(etorPartialMiddle, (item) => {
-                      const session       = CommonService.sessionToNumber(_.find(item,
+                      const session       = CommonService.sessionToNumber(_.find(item.column_values,
                         (s) => s.id === ConstColumn.ETOR.FirstLastSession)?.text);
-                      const returnSession = CommonService.sessionToNumber(_.find(item,
+                      const returnSession = CommonService.sessionToNumber(_.find(item.column_values,
                         (s) => s.id === ConstColumn.ETOR.ReturnSession)?.text);
-                      const etorUser      = _.find(item, (s) => s.id === ConstColumn.ETOR.MondayUser);
-                      notAvailable        = _.includes(tutor, etorUser) ? true : notAvailable;
+                      const etorUser      = _.find(item.column_values, (s) => s.id === ConstColumn.ETOR.MondayUser)?.display_value;
+                      notAvailable        = etorUser?.length && _.includes(tutor, etorUser) ? true : notAvailable;
                       return sessionWS >= session && sessionWS < returnSession;
-                    })
+                    }).map((s) => s.id)
                     : [];
                   const connectIds = _.union(etorFullDayIds.map(Number),
                     leaveEarlierIds.map(Number),
