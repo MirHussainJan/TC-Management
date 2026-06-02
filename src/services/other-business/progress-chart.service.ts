@@ -945,31 +945,12 @@ export default class ProgressChartService {
             return result;
           }
           function countByMonthFromBinderAnalyticsSubitems(subitems, predicate) {
-            const monthMap = {
-              '01': 'jan',
-              '02': 'feb',
-              '03': 'mar',
-              '04': 'apr',
-              '05': 'may',
-              '06': 'jun',
-              '07': 'jul',
-              '08': 'aug',
-              '09': 'sept',
-              '10': 'oct',
-              '11': 'nov',
-              '12': 'dec',
-            };
             const result = { jan: 0, feb: 0, mar: 0, apr: 0, may: 0, jun: 0, jul: 0, aug: 0, sept: 0, oct: 0, nov: 0, dec: 0 };
             for (const sub of subitems || []) {
-              const subjectText =
-                _.find(sub.column_values, (cv) => cv.id === ConstColumn.SubBinderAnalyticsData.SubjtectsWorkedOn)?.text?.toLowerCase() || '';
+              const subjectText = ProgressChartService.getBinderAnalyticsSubjectText(sub);
               if (!predicate(subjectText)) continue;
-              const dateCol = (sub.column_values || []).find((cv) => cv.id === 'date0' && cv.text);
-              if (dateCol?.text && dateCol.text.length >= 7) {
-                const mm = dateCol.text.substring(5, 7);
-                const mKey = monthMap[mm];
-                if (mKey) result[mKey]++;
-              }
+              const monthKey = ProgressChartService.getMonthKeyFromDateText((sub.column_values || []).find((cv) => cv.id === 'date0' && cv.text)?.text);
+              if (monthKey) result[monthKey]++;
             }
             return result;
           }
@@ -1005,19 +986,11 @@ export default class ProgressChartService {
           // SAT/ACT prep sessions are tracked in Binder Analytics subitems, so add them into report rollups.
           const satActReading = countByMonthFromBinderAnalyticsSubitems(
             _.get(binderAnalyticsData?.[0], 'subitems'),
-            (subjectText) =>
-              subjectText.includes('sat r') ||
-              subjectText.includes('act r') ||
-              subjectText.includes('sat reading') ||
-              subjectText.includes('act reading'),
+            (subjectText) => ProgressChartService.isTestPrepReadingSubject(subjectText),
           );
           const satActMath = countByMonthFromBinderAnalyticsSubitems(
             _.get(binderAnalyticsData?.[0], 'subitems'),
-            (subjectText) =>
-              subjectText.includes('sat m') ||
-              subjectText.includes('act m') ||
-              subjectText.includes('sat math') ||
-              subjectText.includes('act math'),
+            (subjectText) => ProgressChartService.isTestPrepMathSubject(subjectText),
           );
           Object.keys(readingCom).forEach((k) => (readingCom[k] += satActReading[k]));
           Object.keys(mathMonth).forEach((k) => (mathMonth[k] += satActMath[k]));
@@ -1879,6 +1852,61 @@ export default class ProgressChartService {
 
   static minutesToHours(minutes) {
     return _.round(minutes / 60, 2);
+  }
+
+  static getMonthKeyFromDateText(dateText) {
+    const monthMap = {
+      '01': 'jan',
+      '02': 'feb',
+      '03': 'mar',
+      '04': 'apr',
+      '05': 'may',
+      '06': 'jun',
+      '07': 'jul',
+      '08': 'aug',
+      '09': 'sept',
+      '10': 'oct',
+      '11': 'nov',
+      '12': 'dec',
+    };
+    if (!dateText?.length) return null;
+    const parsed = moment(dateText, ['YYYY-MM-DD', 'MM/DD/YYYY', moment.ISO_8601], true);
+    const monthNumber = parsed.isValid() ? parsed.format('MM') : dateText.substring(5, 7);
+    return monthMap[monthNumber] || null;
+  }
+
+  static getBinderAnalyticsSubjectText(subitem) {
+    const subjectColumn = _.find(subitem?.column_values, (cv) => cv.id === ConstColumn.SubBinderAnalyticsData.SubjtectsWorkedOn);
+    if (subjectColumn?.text?.length) return this.normalizeSubjectText(subjectColumn.text);
+
+    try {
+      const parsedValue = subjectColumn?.value ? JSON.parse(subjectColumn.value) : null;
+      const labels = parsedValue?.labels || parsedValue?.label || parsedValue?.text;
+      if (Array.isArray(labels)) return this.normalizeSubjectText(labels.join(' '));
+      if (labels) return this.normalizeSubjectText(String(labels));
+    } catch (e) {
+      return '';
+    }
+
+    return '';
+  }
+
+  static normalizeSubjectText(subjectText) {
+    return String(subjectText || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  static isTestPrepReadingSubject(subjectText) {
+    const normalized = this.normalizeSubjectText(subjectText);
+    return /\b(sat|act) (r|reading|english|verbal)\b/.test(normalized);
+  }
+
+  static isTestPrepMathSubject(subjectText) {
+    const normalized = this.normalizeSubjectText(subjectText);
+    return /\b(sat|act) (m|math)\b/.test(normalized);
   }
 
   static getStudentBinderPercent(math, name) {

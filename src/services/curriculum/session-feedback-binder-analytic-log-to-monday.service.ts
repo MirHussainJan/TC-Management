@@ -825,16 +825,16 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
               await BlabMondayService.ChangeMultipleColumnValues(6311984142, resultCreateSubitem, {
                 date0: moment(feedbackLogRecord.field_1022_raw?.date, 'MM/DD/YYYY').format('YYYY-MM-DD'),
                 color: feedbackLogRecord.field_1567,
-                time_on_sat: Number(feedbackLogRecord.field_1563) + Number(feedbackLogRecord.field_1564) + Number(feedbackLogRecord.field_1565),
-                __sat_lessons: 1,
+                time_on_act: Number(feedbackLogRecord.field_1563) + Number(feedbackLogRecord.field_1564) + Number(feedbackLogRecord.field_1565),
+                __act_lessons: 1,
               });
             }
             if (feedbackLogRecord.field_1021 == 'SAT' || feedbackLogRecord.field_1585 == 'SAT' || feedbackLogRecord.field_1566 == 'SAT') {
               await BlabMondayService.ChangeMultipleColumnValues(6311984142, resultCreateSubitem, {
                 date0: moment(feedbackLogRecord.field_1022_raw?.date, 'MM/DD/YYYY').format('YYYY-MM-DD'),
                 color: feedbackLogRecord.field_1567,
-                time_on_act: Number(feedbackLogRecord.field_1563) + Number(feedbackLogRecord.field_1564) + Number(feedbackLogRecord.field_1565),
-                __act_lessons: 1,
+                time_on_sat: Number(feedbackLogRecord.field_1563) + Number(feedbackLogRecord.field_1564) + Number(feedbackLogRecord.field_1565),
+                __sat_lessons: 1,
               });
             }
 
