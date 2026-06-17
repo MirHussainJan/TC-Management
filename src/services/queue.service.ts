@@ -42,7 +42,8 @@ export default class QueueService {
         console.log('QueueService ' + queueName + '[AMQP Send] connected');
         await conn.createChannel(async function (error1, channel) {
           if (error1) {
-            throw error1;
+            Logger.log(`QueueService ${queueName} [AMQP] channel error: ${error1}`);
+            return;
           }
 
           await channel.assertQueue(queueName, {
@@ -230,7 +231,8 @@ export default class QueueService {
       async function (err, conn) {
         if (err) {
           Logger.log(`ListenerSHLDeductHours Error ${err}`);
-          throw err;
+          setTimeout(() => QueueService.ListenerSHLDeductHours(), 10000);
+          return;
         }
         Logger.log(`ListenerSHLDeductHours Connected ${err}`);
 
@@ -238,7 +240,8 @@ export default class QueueService {
         await conn.createChannel(async function (error1, channel) {
           if (error1) {
             Logger.log(`ListenerSHLDeductHours Error ${error1}`);
-            throw error1;
+            setTimeout(() => QueueService.ListenerSHLDeductHours(), 10000);
+            return;
           }
           await channel.assertQueue(QueueName.SHLDeductHours, {
             durable: false,
@@ -295,14 +298,16 @@ export default class QueueService {
       async function (err, conn) {
         if (err) {
           Logger.log(`ListenerSHLAuditedRemainingHour Error ${err}`);
-          throw err;
+          setTimeout(() => QueueService.ListenerSHLAuditedRemainingHour(), 10000);
+          return;
         }
 
         Logger.log('ListenerSHLAuditedRemainingHour Connected');
         await conn.createChannel(async function (error1, channel) {
           if (error1) {
             Logger.log('Error create channel SHLAuditedRemainingHour ' + error1);
-            throw error1;
+            setTimeout(() => QueueService.ListenerSHLAuditedRemainingHour(), 10000);
+            return;
           }
           await channel.assertQueue(QueueName.SHLAuditedRemainingHour, {
             durable: false,
@@ -330,7 +335,8 @@ export default class QueueService {
         await conn.createChannel(async function (error1, channel) {
           if (error1) {
             Logger.log('Error create channel SHLAuditedRemainingHourAuto ' + error1);
-            throw error1;
+            setTimeout(() => QueueService.ListenerSHLAuditedRemainingHour(), 10000);
+            return;
           }
 
           channel.prefetch(1);
@@ -369,14 +375,16 @@ export default class QueueService {
       async function (err, conn) {
         if (err) {
           Logger.log(`ListenerForwardWebhook Error ${err}`);
-          throw err;
+          setTimeout(() => QueueService.ListenerForwardWebhook(), 10000);
+          return;
         }
 
         Logger.log('ListenerForwardWebhook Connected');
         await conn.createChannel(async function (error1, channel) {
           if (error1) {
             Logger.log('Error create channel ListenerForwardWebhook ' + error1);
-            throw error1;
+            setTimeout(() => QueueService.ListenerForwardWebhook(), 10000);
+            return;
           }
           await channel.assertQueue(QueueName.ForwardWebhook, {
             durable: false,
@@ -420,7 +428,8 @@ export default class QueueService {
       async function (err, conn) {
         if (err) {
           Logger.log(`ListenerSHLAddFromWS Error ${err}`);
-          throw err;
+          setTimeout(() => QueueService.ListenerSHLAddFromWS(), 10000);
+          return;
         }
         Logger.log(`ListenerSHLAddFromWS Connected ${err}`);
 
@@ -428,7 +437,8 @@ export default class QueueService {
         await conn.createChannel(async function (error1, channel) {
           if (error1) {
             Logger.log(`ListenerSHLAddFromWS Error ${error1}`);
-            throw error1;
+            setTimeout(() => QueueService.ListenerSHLAddFromWS(), 10000);
+            return;
           }
           await channel.assertQueue(QueueName.SHLAddFromWS, {
             durable: false,
