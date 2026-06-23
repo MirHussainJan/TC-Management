@@ -10,6 +10,7 @@ import QueueService from './services/queue.service';
 import axios from 'axios';
 import CronJob from 'node-cron';
 import CronService from './services/cron.service';
+import SessionFeedbackDurableQueueService from './services/session-feedback-durable-queue.service';
 
 const scheduleEveryThirtyMins = '*/30 * * * *';
 const schedule10PMEST = '0 3 * * *';
@@ -53,6 +54,7 @@ app.listen(port, () => {
   console.log(`App listening at http://localhost:${port}`);
 
   QueueService.Listeners();
+  SessionFeedbackDurableQueueService.start();
 });
 
 export default app;

@@ -56,6 +56,37 @@ function extractSafeTokenValues(record: any) {
   };
 }
 
+function feedbackRecordFromPayload(bodyData: any) {
+  const fields = bodyData?.fields;
+  if (!bodyData?.id || !fields || typeof fields !== 'object') {
+    throw new Error(`Feedback log ${bodyData?.id || 'unknown'} no longer exists in Knack and no field snapshot was supplied`);
+  }
+
+  return {
+    id: bodyData.id,
+    ...fields,
+    field_1022_raw: { date: fields.field_1022 },
+    field_239_raw: [{ identifier: fields.field_239 }],
+    field_936_raw: [{ identifier: fields.field_936 }],
+    field_1080_raw: fields.field_1080,
+    field_1283_raw: fields.field_1283,
+    field_1285_raw: fields.field_1285,
+    field_918_raw: fields.field_918,
+    field_919_raw: fields.field_919,
+    field_1468_raw: fields.field_1468,
+    field_1800_raw: fields.field_1800,
+    __fromPayloadSnapshot: true,
+  };
+}
+
+async function updateFeedbackLogRecord(feedbackLogRecord: any, values: any) {
+  if (feedbackLogRecord?.__fromPayloadSnapshot) {
+    return;
+  }
+
+  await knackService.updateRecord('object_29', feedbackLogRecord.id, values);
+}
+
 async function syncStudentCurrentTotalTokens(feedbackLogRecord: any, tokenTotal: number) {
   const studentRecordId = feedbackLogRecord?.field_1328;
   if (!studentRecordId) {
@@ -154,7 +185,7 @@ async function ensurePreviousTokenCarryForward(feedbackLogRecord: any) {
   Logger.log(
     `Fixing feedback carry-forward for ${feedbackLogRecord.id}: field_1003 ${currentPrevTotal} -> ${expectedPrevTotal} (student ${studentRecordId})`,
   );
-  await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+  await updateFeedbackLogRecord(feedbackLogRecord, {
     field_1003: expectedPrevTotal,
   });
 
@@ -195,7 +226,7 @@ async function ensureSessionFeedbackItem(feedbackLogRecord: any, studentRecords:
 
   if (existingItem?.id) {
     Logger.log(`Session Feedback Log item found by name/date for feedback log ${feedbackLogRecord.id}: ${existingItem.id}`);
-    await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+    await updateFeedbackLogRecord(feedbackLogRecord, {
       field_1710: existingItem.id,
       field_1711: {
         url: `https://tutoringclub-stjohns.monday.com/boards/4911698347/views/152869316/pulses/${existingItem.id}`,
@@ -208,7 +239,7 @@ async function ensureSessionFeedbackItem(feedbackLogRecord: any, studentRecords:
   }
 
   const createdItemId = await BlabMondayService.CreateItemWithValues(BoardConstants.SessionFeedbackLog, itemName, columnValues);
-  await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+  await updateFeedbackLogRecord(feedbackLogRecord, {
     field_1710: createdItemId,
     field_1711: {
       url: `https://tutoringclub-stjohns.monday.com/boards/4911698347/views/152869316/pulses/${createdItemId}`,
@@ -246,7 +277,7 @@ async function ensureBinderAnalyticsSubitem(feedbackLogRecord: any, binder: any,
 
   if (existingSubitem?.id) {
     Logger.log(`Binder Analytics subitem found by name for feedback log ${feedbackLogRecord.id}: ${existingSubitem.id}`);
-    await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+    await updateFeedbackLogRecord(feedbackLogRecord, {
       field_1712: existingSubitem.id,
       field_1713: {
         url: `https://tutoringclub-stjohns.monday.com/boards/5714515483/pulses/${existingSubitem.id}`,
@@ -257,7 +288,7 @@ async function ensureBinderAnalyticsSubitem(feedbackLogRecord: any, binder: any,
   }
 
   const createdSubitemId = await BlabMondayService.CreateSubitemWithValues(binder.id, subitemName, columnValues);
-  await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+  await updateFeedbackLogRecord(feedbackLogRecord, {
     field_1712: createdSubitemId,
     field_1713: {
       url: `https://tutoringclub-stjohns.monday.com/boards/5714515483/pulses/${createdSubitemId}`,
@@ -279,13 +310,31 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
     event_data: bodyData,
     monday_item_id: 0,
   };
-  const { mondayLog } = await LogService.StartLog(logData);
+  let mondayLog = null;
   let result;
   try {
+    try {
+      const started = await LogService.StartLog(logData);
+      mondayLog = started?.mondayLog || null;
+    } catch (logError) {
+      Logger.log(`Unable to start operational log for feedback ${bodyData?.id}: ${logError}`);
+    }
+
     result = { msg: `sessionFeedbackBinderAnalyticLogToMonday executed` };
-    // for (const record of bodyData?.records) {
-    let feedbackLogRecord = await knackService.getRecord('object_29', bodyData.id);
-    feedbackLogRecord = await getStabilizedFeedbackLogRecord(feedbackLogRecord.id, feedbackLogRecord);
+    let feedbackLogRecord;
+    try {
+      feedbackLogRecord = await knackService.getRecord('object_29', bodyData.id);
+    } catch (knackError) {
+      Logger.log(`Feedback ${bodyData?.id} unavailable in Knack; using queued field snapshot: ${knackError}`);
+      feedbackLogRecord = feedbackRecordFromPayload(bodyData);
+    }
+
+    if (!feedbackLogRecord?.id) {
+      feedbackLogRecord = feedbackRecordFromPayload(bodyData);
+    } else if (!feedbackLogRecord.__fromPayloadSnapshot) {
+      feedbackLogRecord = await getStabilizedFeedbackLogRecord(feedbackLogRecord.id, feedbackLogRecord);
+    }
+
     feedbackLogRecord = await ensurePreviousTokenCarryForward(feedbackLogRecord);
     const safeTokenValues = extractSafeTokenValues(feedbackLogRecord);
     await syncStudentCurrentTotalTokens(feedbackLogRecord, safeTokenValues.tokenTotal);
@@ -293,6 +342,9 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
     const studentRecords = await knackService.getRecords('object_1', {
       filters: { match: 'and', rules: [{ field: ConstColumn.Knack.Students.RecordId, operator: 'is', value: feedbackLogRecord.field_1328 }] },
     });
+    if (feedbackLogRecord.__fromPayloadSnapshot && studentRecords?.records?.[0]?.id) {
+      feedbackLogRecord.field_239_raw[0].id = studentRecords.records[0].id;
+    }
 
     //Duplicate Found
     if (feedbackLogRecord.field_1021?.length > 0 && feedbackLogRecord.field_1021 === feedbackLogRecord.field_1585 && studentRecords?.records?.length > 0) {
@@ -303,12 +355,13 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
       const rs = studentDatabaseMonday?.[0]?.column_values?.filter((s) => s.id === ConstColumn.SD.NumberOfSession)?.[0];
 
       const sessionNumber = rs?.text;
-      await knackService.updateRecord('object_29', feedbackLogRecord.id, {
+      await updateFeedbackLogRecord(feedbackLogRecord, {
         field_1715: Number(sessionNumber) + Number(studentRecords?.records?.[0]?.field_1709),
         field_1820: 'Duplicate Subject',
       });
 
-      const getAccounts = await knackService.getRecord('object_2', feedbackLogRecord.field_936_raw?.[0]?.id);
+      const accountRecordId = feedbackLogRecord.field_936_raw?.[0]?.id;
+      const getAccounts = accountRecordId ? await knackService.getRecord('object_2', accountRecordId) : null;
       if (getAccounts?.id) {
         //TODO need slack api token to search User by email
         const slackUser = { id: 123 };
@@ -992,17 +1045,25 @@ export async function sessionFeedbackBinderAnalyticLogToMonday(bodyData) {
     }
     // }
 
-    await LogService.DoneLog({ dbData: mondayLog, result });
+    if (mondayLog) {
+      await LogService.DoneLog({ dbData: mondayLog, result });
+    }
     return { status, message };
   } catch (error) {
     status = 500;
-    message = `Error deleting lesson writing pre-test: ${error.message}`;
-    Logger.log(`Error in deleteLessonWritingPreTestDeleted: ${error}`);
-    await LogService.ExceptionLog({
-      dbData: mondayLog,
-      error,
-      message: `======Delete Lesson Writing Pre-Test Exception=======`,
-    });
+    message = `Error processing session feedback binder analytic log: ${error.message}`;
+    Logger.log(`Error in sessionFeedbackBinderAnalyticLogToMonday: ${error}`);
+    if (mondayLog) {
+      try {
+        await LogService.ExceptionLog({
+          dbData: mondayLog,
+          error,
+          message: `======Session Feedback Binder Analytic Log Exception=======`,
+        });
+      } catch (logError) {
+        Logger.log(`Unable to record session feedback exception for ${bodyData?.id}: ${logError}`);
+      }
+    }
     return { status, message: error };
   }
 }

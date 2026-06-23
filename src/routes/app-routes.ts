@@ -55,5 +55,6 @@ router.post(`/shl-add-to-family-shl`, triggerSHL.AddFamilySHL);
 router.post(`/reading-curriculum-to-monday`, triggerCurriculum.readingCurriculumToMonday);
 router.post(`/delete-lesson-writing-pre-test-deleted`, triggerCurriculum.deleteLessonWritingPreTestDeleted);
 router.post(`/session-feedback-binder-analytic-log-to-monday`, triggerCurriculum.sessionFeedbackBinderAnalyticLogToMonday);
+router.get(`/session-feedback-binder-analytic-log-queue-status`, triggerCurriculum.sessionFeedbackQueueStatus);
 
 export default router;
